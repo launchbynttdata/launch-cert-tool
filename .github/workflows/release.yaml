@@ -1,0 +1,29 @@
+on:
+  release:
+    types:
+      - published
+
+name: Release to PyPI
+
+jobs:
+  pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install required-version defined in pyproject.toml
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set version
+        run: |
+          RELEASE_TAG=$(echo $GITHUB_REF | cut -d / -f 3)
+          uvx --from=toml-cli toml set --toml-path=pyproject.toml project.version $RELEASE_TAG
+
+      - name: Build Package
+        run: uv build
+
+      - name: Publish Package Distributions to PyPI
+        run: uv publish

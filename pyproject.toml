@@ -1,0 +1,65 @@
+[project]
+name = "lcaf-skeleton-python-module"
+version = "0.0.0" # This will be set dynamically from release tags, changing this has no effect.
+description = "Add your description here"
+readme = "README.md"
+license = {text = "Apache 2.0"}
+requires-python = ">=3.11" # If you adjust this, you will need to adjust the python-tests workflow accordingly.
+# Add your dependencies to this project by using `uv add <package>`.
+dependencies = []
+
+[dependency-groups]
+# Add your dev dependencies to this project by using `uv add --dev <package>`.
+dev = [
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.1",
+]
+
+[tool.setuptools]
+package-dir = {hello="src/hello"}
+license-files = [] # Workaround for https://github.com/astral-sh/uv/issues/9513
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+minversion = "8.0"
+addopts = "-ra --cov=src --cov-fail-under=80 --no-cov-on-fail --cov-report term --cov-report html --cov-report xml:htmlcov/coverage.xml"
+testpaths = [
+    "test"
+]
+
+[tool.coverage.report]
+    skip_empty = true
+
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+    ".venv",
+    ".repo",
+    "components"
+]

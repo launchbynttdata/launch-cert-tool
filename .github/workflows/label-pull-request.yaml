@@ -1,0 +1,38 @@
+name: Label Pull Request
+
+on:
+    pull_request:
+        # Only following types are handled by the action, but one can default to all as well
+        types: [opened, reopened, synchronize]
+
+permissions:
+    contents: read
+
+jobs:
+    configure-labels:
+        permissions:
+            issues: write
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Configure missing labels
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                gh label ls --json name > labels.json
+                jq -e 'if map(select(.name | contains ("patch"))) == [] then null else "Label patch exists" end' labels.json || gh label create patch --color "006b75"
+                jq -e 'if map(select(.name | contains ("minor"))) == [] then null else "Label minor exists" end' labels.json || gh label create minor --color "fbca04"
+                jq -e 'if map(select(.name | contains ("major"))) == [] then null else "Label major exists" end' labels.json || gh label create major --color "b60205"
+    label-pr:
+        permissions:
+            contents: read
+            pull-requests: write
+        runs-on: ubuntu-latest
+        steps:
+          - uses: release-drafter/release-drafter@v6 # v6.0.0
+            with:
+                config-name: release-drafter.yaml
+                disable-autolabeler: false
+                disable-releaser: true
+            env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
