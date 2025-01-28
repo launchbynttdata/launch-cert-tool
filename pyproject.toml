@@ -1,23 +1,35 @@
 [project]
-name = "lcaf-skeleton-python-module"
+name = "launch-cert-tool"
 version = "0.0.0" # This will be set dynamically from release tags, changing this has no effect.
-description = "Add your description here"
+description = "CLI tool to assist with certificate management"
 readme = "README.md"
 license = {text = "Apache 2.0"}
-requires-python = ">=3.11" # If you adjust this, you will need to adjust the python-tests workflow accordingly.
+requires-python = ">=3.13" # If you adjust this, you will need to adjust the python-tests workflow accordingly.
 # Add your dependencies to this project by using `uv add <package>`.
-dependencies = []
+dependencies = [
+    "arn>=0.1.5",
+    "boto3>=1.36.7",
+    "certifi>=2024.12.14",
+    "cryptography>=43.0.3",
+    "pki-tools>=1.0.6",
+    "requests>=2.32.3",
+    "typer>=0.15.1",
+]
 
 [dependency-groups]
 # Add your dev dependencies to this project by using `uv add --dev <package>`.
 dev = [
     "pytest>=8.3.4",
     "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
     "ruff>=0.9.1",
 ]
 
+[project.scripts]
+launch-cert-tool = "launch_cert_tool.cli:app"
+
 [tool.setuptools]
-package-dir = {hello="src/hello"}
+package-dir = {launch_cert_tool="src/launch_cert_tool"}
 license-files = [] # Workaround for https://github.com/astral-sh/uv/issues/9513
 
 [tool.pytest.ini_options]
