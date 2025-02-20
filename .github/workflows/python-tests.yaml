@@ -45,3 +45,4 @@ jobs:
         title: Coverage report for Python ${{ matrix.python-version }}
         remove-link-from-badge: true
         unique-id-for-comment: ${{ matrix.python-version }}
+        coverage-path-prefix: src/
