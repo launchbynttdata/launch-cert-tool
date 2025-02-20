@@ -4,10 +4,11 @@ import ssl
 
 import pki_tools
 import pytest
+from arn import Arn
 from typer.testing import CliRunner
 
+from launch_cert_tool import validate
 from launch_cert_tool.cli import app
-from launch_cert_tool.validate import CertificateRevoked
 
 runner = CliRunner()
 
@@ -46,7 +47,7 @@ def test_unhandled_exception_exits_1(mocker):
             "This certificate chain is missing an issuer",
         ),
         (
-            CertificateRevoked,
+            validate.CertificateRevoked,
             8,
             "This certificate chain contains a revoked certificate",
         ),
@@ -102,3 +103,19 @@ def test_handled_exceptions(
     result = runner.invoke(app, args=["validate", "local", "LICENSE"])
     assert result.exit_code == expected_code
     assert expected_text in result.stdout
+
+
+def test_acm_respects_region_from_arn(mocker):
+    session_mock = mocker.patch.object(validate, "Session")
+    mocked_boto_session = mocker.MagicMock()
+    session_mock.return_value = mocked_boto_session
+    arn = Arn(
+        "arn:aws:acm:foo:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+    )
+
+    # pki_tools doesn't play nice with a MagicMock so we expect this failure to be raised in a mock scenario.
+    with pytest.raises(
+        RuntimeError, match=f"Failed to retrieve certificate chain from ACM for {arn}"
+    ):
+        validate.get_acm_chain(arn=arn)
+    mocked_boto_session.client.assert_called_with("acm", region_name="foo")
