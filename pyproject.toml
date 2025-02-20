@@ -4,8 +4,15 @@ version = "0.0.0" # This will be set dynamically from release tags, changing thi
 description = "CLI tool to assist with certificate management"
 readme = "README.md"
 license = {text = "Apache 2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
 requires-python = ">=3.13" # If you adjust this, you will need to adjust the python-tests workflow accordingly.
 # Add your dependencies to this project by using `uv add <package>`.
+
 dependencies = [
     "arn>=0.1.5",
     "boto3>=1.36.7",
@@ -25,6 +32,10 @@ dev = [
     "ruff>=0.9.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/launchbynttdata/launch-cli"
+Issues = "https://github.com/launchbynttdata/launch-cli/issues"
+
 [project.scripts]
 launch-cert-tool = "launch_cert_tool.cli:app"
 
@@ -35,7 +46,7 @@ license-files = [] # Workaround for https://github.com/astral-sh/uv/issues/9513
 [tool.pytest.ini_options]
 pythonpath = "src"
 minversion = "8.0"
-addopts = "-ra --cov=src --cov-fail-under=80 --no-cov-on-fail --cov-report term --cov-report html --cov-report xml:htmlcov/coverage.xml"
+addopts = "-s -ra --cov=src --cov-fail-under=80 --cov-report term --cov-report html --cov-report xml:htmlcov/coverage.xml"
 testpaths = [
     "test"
 ]
