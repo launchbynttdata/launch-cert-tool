@@ -8,6 +8,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Utilities"
 ]
 
 requires-python = ">=3.13" # If you adjust this, you will need to adjust the python-tests workflow accordingly.
@@ -33,8 +39,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/launchbynttdata/launch-cli"
-Issues = "https://github.com/launchbynttdata/launch-cli/issues"
+Homepage = "https://github.com/launchbynttdata/launch-cert-tool"
+Issues = "https://github.com/launchbynttdata/launch-cert-tool/issues"
 
 [project.scripts]
 launch-cert-tool = "launch_cert_tool.cli:app"
