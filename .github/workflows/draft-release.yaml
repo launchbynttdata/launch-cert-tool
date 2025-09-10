@@ -1,25 +1,18 @@
 name: Draft Release
 
 on:
-    push:
-        branches:
-          - main
+  push:
+    branches:
+      - main
 
 permissions:
-    contents: read
+  contents: read
 
 jobs:
-    draft-release:
-        permissions:
-            contents: write
-            pull-requests: write
-        runs-on: ubuntu-latest
-        steps:
-          - uses: release-drafter/release-drafter@v6 # v6.0.0
-            with:
-                config-name: release-drafter.yaml
-                commitish: main
-                disable-autolabeler: true
-                latest: true
-            env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  draft-release:
+    name: "Draft Release on Merge"
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: launchbynttdata/launch-workflows/.github/workflows/reusable-release-draft-on-merge.yml@0.10.0
+    secrets: inherit # pragma: allowlist secret
