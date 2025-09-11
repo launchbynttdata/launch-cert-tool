@@ -12,7 +12,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install required-version defined in pyproject.toml
         uses: astral-sh/setup-uv@v5
