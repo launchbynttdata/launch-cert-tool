@@ -11,5 +11,5 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    uses: launchbynttdata/launch-workflows/.github/workflows/reusable-pr-label-by-branch.yml@0.14.2
+    uses: launchbynttdata/launch-workflows/.github/workflows/reusable-pr-label-by-branch.yml@0.15.0
     secrets: inherit # pragma: allowlist secret
