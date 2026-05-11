@@ -15,7 +15,7 @@ jobs:
       contents: read
       checks: write
       pull-requests: write
-    uses: launchbynttdata/launch-workflows/.github/workflows/reusable-python-uv-pytest.yml@0.14.2
+    uses: launchbynttdata/launch-workflows/.github/workflows/reusable-python-uv-pytest.yml@0.15.2
     with:
       report-coverage: true
       python-version: 3.13
