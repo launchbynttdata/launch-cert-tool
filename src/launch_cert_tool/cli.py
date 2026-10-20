@@ -9,9 +9,26 @@ from rich.console import Console
 from launch_cert_tool.parser import parse_arn, parse_filename, parse_url
 from launch_cert_tool.validate import analyze_certificate_chain
 
-app = typer.Typer(no_args_is_help=True)
-validate_app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(invoke_without_command=True)
+validate_app = typer.Typer(invoke_without_command=True)
 app.add_typer(validate_app, name="validate")
+
+
+def _show_help_when_no_subcommand(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(ctx: typer.Context) -> None:
+    _show_help_when_no_subcommand(ctx)
+
+
+@validate_app.callback()
+def _validate_root(ctx: typer.Context) -> None:
+    _show_help_when_no_subcommand(ctx)
+
 
 console = Console(stderr=False)
 err_console = Console(stderr=True)
@@ -19,17 +36,20 @@ err_console = Console(stderr=True)
 # Suppress logs from pki_tools directly, we'll log what we need to stdout.
 loguru.logger.disable("pki_tools")
 
+
 def _verbose() -> typer.Option:
     return typer.Option(
         "--verbose",
         help="Print the certificate chain to the console.",
     )
 
+
 def _check_trust_anchor_expiry() -> typer.Option:
     return typer.Option(
         "--check-trust-anchor-expiry/--no-check-trust-anchor-expiry",
         help="Validate notBefore/notAfter on self-signed trust anchors in the chain.",
     )
+
 
 def _check_crl_option() -> typer.Option:
     return typer.Option(
