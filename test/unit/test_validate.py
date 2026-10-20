@@ -13,6 +13,20 @@ from launch_cert_tool.cli import app
 runner = CliRunner()
 
 
+def test_validate_certificate_chain_checks_end_entity_and_trust_path(mocker):
+    chain = mocker.MagicMock()
+    end_entity = mocker.MagicMock()
+    mocker.patch.object(
+        validate, "find_end_entity_certificates", return_value=[end_entity]
+    )
+    mocker.patch.object(validate, "assert_certificate_valid")
+
+    validate.validate_certificate_chain(chain)
+
+    validate.assert_certificate_valid.assert_called_once_with(end_entity)
+    chain.validate_trust_path.assert_called_once_with(end_entity)
+
+
 def test_unhandled_exception_exits_1(mocker):
     mocker.patch("launch_cert_tool.validate.check_local_chains", side_effect=Exception)
     mocker.patch(
@@ -102,7 +116,7 @@ def test_handled_exceptions(
     )
     result = runner.invoke(app, args=["validate", "local", "LICENSE"])
     assert result.exit_code == expected_code
-    assert expected_text in result.stdout
+    assert expected_text in result.output
 
 
 def test_acm_respects_region_from_arn(mocker):

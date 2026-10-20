@@ -2,6 +2,7 @@ import itertools
 import pathlib
 import socket
 import ssl
+from datetime import UTC, datetime
 
 import certifi
 import cryptography
@@ -108,6 +109,41 @@ def get_local_chain(paths: list[pathlib.Path]) -> pki_tools.Chain:
     return pki_tools.Chain(certificates=certs)
 
 
+def find_end_entity_certificates(chain: pki_tools.Chain) -> list[pki_tools.Certificate]:
+    """Return end-entity (leaf) certificates in a chain.
+
+    A certificate is treated as an end entity when its subject is not the issuer
+    of any other certificate in the chain (excluding self-signed roots).
+    """
+    certs = chain.certificates
+    end_entities = [
+        cert
+        for cert in certs
+        if not any(other.issuer == cert.subject for other in certs if other is not cert)
+    ]
+    if not end_entities:
+        raise pki_tools.NotCompleteChain(
+            "This certificate chain is not complete! Ensure your files contain the leaf and all intermediate keys."
+        )
+    return end_entities
+
+
+def assert_certificate_valid(cert: pki_tools.Certificate) -> None:
+    """Raise CertExpired when the certificate is outside its validity period."""
+    now = datetime.now(UTC)
+    if cert.validity.not_after < now or cert.validity.not_before > now:
+        raise pki_tools.CertExpired(
+            f"Certificate in chain with subject: '{cert.subject}' has expired"
+        )
+
+
+def validate_certificate_chain(chain: pki_tools.Chain) -> None:
+    """Validate PKIX trust paths for end-entity certificates in the chain."""
+    for end_entity in find_end_entity_certificates(chain):
+        assert_certificate_valid(end_entity)
+        chain.validate_trust_path(end_entity)
+
+
 def validate_chain_crl(chain: pki_tools.Chain):
     for cert in chain.certificates:
         console.print(f"Checking CRL for {cert.subject}")
@@ -126,7 +162,7 @@ def check_local_chains(paths: list[pathlib.Path], verbose: bool = False) -> None
     for p in paths:
         console.print(f"  - {p}")
     chain = get_local_chain(paths)
-    chain.check_chain()
+    validate_certificate_chain(chain)
     validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
@@ -143,7 +179,7 @@ def check_remote_chain(url: HttpUrl, verbose: bool = False):
         verbose (bool, optional): Write the chain's details to stdout. Defaults to False.
     """
     chain = get_remote_chain(url.host, url.port if url.port is not None else 443)
-    chain.check_chain()
+    validate_certificate_chain(chain)
     validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
@@ -152,7 +188,7 @@ def check_remote_chain(url: HttpUrl, verbose: bool = False):
 
 def check_acm_chain(arn: Arn, verbose: bool = False):
     chain = get_acm_chain(arn=arn)
-    chain.check_chain()
+    validate_certificate_chain(chain)
     validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
