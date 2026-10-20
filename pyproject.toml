@@ -24,7 +24,7 @@ dependencies = [
     "boto3>=1.36.7",
     "certifi>=2026.10.19",
     "cryptography>=43.0.3",
-    "pki-tools>=1.0.6",
+    "pki-tools>=2.2.0",
     "requests>=2.32.3",
     "typer>=0.15.1",
 ]

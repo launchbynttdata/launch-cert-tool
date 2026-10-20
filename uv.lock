@@ -514,7 +514,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.36.7" },
     { name = "certifi", specifier = ">=2026.10.19" },
     { name = "cryptography", specifier = ">=43.0.3" },
-    { name = "pki-tools", specifier = ">=1.0.6" },
+    { name = "pki-tools", specifier = ">=2.2.0" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "typer", specifier = ">=0.15.1" },
 ]
