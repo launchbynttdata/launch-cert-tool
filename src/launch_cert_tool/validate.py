@@ -253,12 +253,12 @@ def analyze_certificate_chain(
             f"{FAILURE_MESSAGE_COMMON}Failed to resolve the hostname: {values}"
         )
         raise typer.Exit(code=10)
-    except socket.timeout:
+    except TimeoutError:
         err_console.print(
             f"{FAILURE_MESSAGE_COMMON}Timeout while connecting to hostname: {values}"
         )
         raise typer.Exit(code=11)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         if type(e) is ssl.SSLCertVerificationError:
             if "certificate has expired" in str(e):
                 err_console.print(
