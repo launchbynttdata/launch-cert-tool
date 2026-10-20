@@ -21,7 +21,10 @@ def unsafe_cert_download():
         # against known bad certificates, but should _never_ be set in application code.
         context.verify_mode = ssl.CERT_NONE
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock, context.wrap_socket(sock, server_hostname=hostname) as ssock:
+        with (
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock,
+            context.wrap_socket(sock, server_hostname=hostname) as ssock,
+        ):
             ssock.connect((hostname, port))
             verified_chain_bytes = ssock.get_verified_chain()
             if not verified_chain_bytes:

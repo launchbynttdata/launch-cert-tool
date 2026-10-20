@@ -19,6 +19,24 @@ err_console = Console(stderr=True)
 # Suppress logs from pki_tools directly, we'll log what we need to stdout.
 loguru.logger.disable("pki_tools")
 
+def _verbose() -> typer.Option:
+    return typer.Option(
+        "--verbose",
+        help="Print the certificate chain to the console.",
+    )
+
+def _check_trust_anchor_expiry() -> typer.Option:
+    return typer.Option(
+        "--check-trust-anchor-expiry/--no-check-trust-anchor-expiry",
+        help="Validate notBefore/notAfter on self-signed trust anchors in the chain.",
+    )
+
+def _check_crl_option() -> typer.Option:
+    return typer.Option(
+        "--check-crl/--no-check-crl",
+        help="Check certificate revocation using CRL distribution points.",
+    )
+
 
 @validate_app.command()
 def local(
@@ -29,16 +47,17 @@ def local(
             help="Path to local files containing keys to validate. If multiple files are specified, they will be combined into a single chain and validated together, allowing users to have a leaf certificate and the intermediate chain in separate files.",
         ),
     ],
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            help="Print the certificate chain to the console.",
-        ),
-    ] = False,
+    verbose: Annotated[bool, _verbose()] = False,
+    check_trust_anchor_expiry: Annotated[bool, _check_trust_anchor_expiry()] = True,
+    check_crl: Annotated[bool, _check_crl_option()] = True,
 ):
     """Verify a certificate chain from local file(s). If multiple files are provided, they will be combined into a single chain and validated together."""
-    analyze_certificate_chain(values=paths, verbose=verbose)
+    analyze_certificate_chain(
+        values=paths,
+        verbose=verbose,
+        check_trust_anchor_expiry=check_trust_anchor_expiry,
+        check_crl=check_crl,
+    )
 
 
 @validate_app.command()
@@ -50,16 +69,17 @@ def remote(
             help="URL to validate certificate chain. If the URL scheme is included, it must be https://",
         ),
     ],
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            help="Print the certificate chain to the console.",
-        ),
-    ] = False,
+    verbose: Annotated[bool, _verbose()] = False,
+    check_trust_anchor_expiry: Annotated[bool, _check_trust_anchor_expiry()] = True,
+    check_crl: Annotated[bool, _check_crl_option()] = True,
 ):
     """Verify a certificate chain from a remote URL."""
-    analyze_certificate_chain(values=url, verbose=verbose)
+    analyze_certificate_chain(
+        values=url,
+        verbose=verbose,
+        check_trust_anchor_expiry=check_trust_anchor_expiry,
+        check_crl=check_crl,
+    )
 
 
 @validate_app.command()
@@ -71,16 +91,17 @@ def acm(
             help="ARN of the ACM certificate to validate.",
         ),
     ],
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            help="Print the certificate chain to the console.",
-        ),
-    ] = False,
+    verbose: Annotated[bool, _verbose()] = False,
+    check_trust_anchor_expiry: Annotated[bool, _check_trust_anchor_expiry()] = True,
+    check_crl: Annotated[bool, _check_crl_option()] = True,
 ):
     """Verify a certificate chain from AWS ACM."""
-    analyze_certificate_chain(values=arn, verbose=verbose)
+    analyze_certificate_chain(
+        values=arn,
+        verbose=verbose,
+        check_trust_anchor_expiry=check_trust_anchor_expiry,
+        check_crl=check_crl,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
