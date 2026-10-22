@@ -21,6 +21,7 @@ FAILURE_MESSAGE_COMMON = (
     "[bold red]Failure: your certificate chain could not be validated![/bold red]\n"
 )
 
+
 def _remote_ssl_context(check_ssl_crl: bool) -> ssl.SSLContext:
     """Build an SSL context for remote chain retrieval."""
     remote_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
