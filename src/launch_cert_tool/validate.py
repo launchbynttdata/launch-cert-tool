@@ -151,8 +151,15 @@ def trust_anchor_for(
 ) -> pki_tools.Certificate:
     """Return the self-signed root at the end of the trust path for an end entity."""
     current = end_entity
+    seen: set[tuple[int, str]] = set()
     while True:
         issuer = chain.get_issuer(current)
+        key = (issuer.serial_number, str(issuer.subject))
+        if key in seen:
+            raise pki_tools.NotCompleteChain(
+                "This certificate chain is not complete! Ensure your files contain the root and all intermediate keys."
+            )
+        seen.add(key)
         if issuer.issuer == issuer.subject:
             return issuer
         current = issuer
@@ -178,8 +185,9 @@ def validate_certificate_chain(
     for end_entity in find_end_entity_certificates(chain):
         assert_certificate_valid(end_entity)
         chain.validate_trust_path(end_entity)
+        anchor = trust_anchor_for(end_entity, chain)
         if check_trust_anchor_expiry:
-            assert_certificate_valid(trust_anchor_for(end_entity, chain))
+            assert_certificate_valid(anchor)
 
 
 def validate_chain_crl(chain: pki_tools.Chain):

@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from launch_cert_tool import validate
 from launch_cert_tool.cli import app
-from test.unit.synthetic_certs import build_chain
+from test.unit.synthetic_certs import build_ca_cycle_chain, build_chain
 
 runner = CliRunner()
 
@@ -71,11 +71,26 @@ def test_validate_certificate_chain_checks_end_entity_and_trust_path(mocker):
         validate, "find_end_entity_certificates", return_value=[end_entity]
     )
     mocker.patch.object(validate, "assert_certificate_valid")
+    trust_anchor_mock = mocker.patch.object(validate, "trust_anchor_for")
 
     validate.validate_certificate_chain(chain)
 
     validate.assert_certificate_valid.assert_called_once_with(end_entity)
     chain.validate_trust_path.assert_called_once_with(end_entity)
+    trust_anchor_mock.assert_called_once_with(end_entity, chain)
+
+
+def test_validate_certificate_chain_rejects_ca_cycle_without_trust_anchor():
+    chain = build_ca_cycle_chain()
+    with pytest.raises(pki_tools.NotCompleteChain):
+        validate.validate_certificate_chain(chain, check_trust_anchor_expiry=False)
+
+
+def test_trust_anchor_for_rejects_ca_cycle():
+    chain = build_ca_cycle_chain()
+    end_entity = validate.find_end_entity_certificates(chain)[0]
+    with pytest.raises(pki_tools.NotCompleteChain):
+        validate.trust_anchor_for(end_entity, chain)
 
 
 def test_unhandled_exception_exits_1(mocker):

@@ -139,3 +139,49 @@ def build_chain(
         crypto_certs.append(unrelated_cert)
 
     return pki_tools.Chain.from_cryptography(crypto_certs=crypto_certs)
+
+
+def build_ca_cycle_chain() -> pki_tools.Chain:
+    """Build a leaf and two CAs that cross-sign with no self-signed trust anchor."""
+    now = datetime.now(UTC)
+    validity = now + timedelta(days=365)
+
+    ca_a_key = _rsa_key()
+    ca_b_key = _rsa_key()
+    leaf_key = _rsa_key()
+
+    ca_a_name = _name("Cycle CA A")
+    ca_b_name = _name("Cycle CA B")
+    leaf_name = _name("Cycle Leaf")
+
+    ca_a_cert = _sign(
+        ca_a_name,
+        ca_b_name,
+        ca_a_key.public_key(),
+        ca_b_key,
+        not_before=now - timedelta(days=30),
+        not_after=validity,
+        extensions=_ca_extensions(),
+    )
+    ca_b_cert = _sign(
+        ca_b_name,
+        ca_a_name,
+        ca_b_key.public_key(),
+        ca_a_key,
+        not_before=now - timedelta(days=30),
+        not_after=validity,
+        extensions=_ca_extensions(),
+    )
+    leaf_cert = _sign(
+        leaf_name,
+        ca_a_name,
+        leaf_key.public_key(),
+        ca_a_key,
+        not_before=now - timedelta(days=30),
+        not_after=validity,
+        extensions=_ee_extensions(),
+    )
+
+    return pki_tools.Chain.from_cryptography(
+        crypto_certs=[leaf_cert, ca_a_cert, ca_b_cert]
+    )
