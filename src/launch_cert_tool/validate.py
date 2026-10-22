@@ -2,6 +2,7 @@ import itertools
 import pathlib
 import socket
 import ssl
+from datetime import UTC, datetime
 
 import certifi
 import cryptography
@@ -20,11 +21,17 @@ FAILURE_MESSAGE_COMMON = (
     "[bold red]Failure: your certificate chain could not be validated![/bold red]\n"
 )
 
-# Set up our SSL context and flags for all remote verifications.
-# Uses the default CA bundle included with certifi, and enables CRL checking.
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-context.load_verify_locations(certifi.where())
-context.verify_flags &= ssl.VERIFY_CRL_CHECK_CHAIN
+
+def _remote_ssl_context(check_ssl_crl: bool) -> ssl.SSLContext:
+    """Build an SSL context for remote chain retrieval."""
+    remote_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    remote_context.load_verify_locations(certifi.where())
+    if check_ssl_crl:
+        remote_context.verify_flags |= ssl.VERIFY_CRL_CHECK_CHAIN
+    else:
+        # Preserves pre-flag behavior: do not require CRLs during the TLS handshake.
+        remote_context.verify_flags &= ssl.VERIFY_CRL_CHECK_CHAIN
+    return remote_context
 
 
 class CertificateRevoked(Exception):
@@ -59,7 +66,9 @@ def get_acm_chain(arn: Arn) -> pki_tools.Chain:
         ) from e
 
 
-def get_remote_chain(hostname: str, port: int = 443) -> pki_tools.Chain:
+def get_remote_chain(
+    hostname: str, port: int = 443, *, check_ssl_crl: bool = False
+) -> pki_tools.Chain:
     """Initiates an SSL connection to a remote host and retrieves the certificate chain.
 
     Args:
@@ -74,7 +83,8 @@ def get_remote_chain(hostname: str, port: int = 443) -> pki_tools.Chain:
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         console.print(f"Opening socket to {hostname}:{port}...")
-        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+        remote_context = _remote_ssl_context(check_ssl_crl)
+        with remote_context.wrap_socket(sock, server_hostname=hostname) as ssock:
             ssock.connect((hostname, port))
             console.print(f"Connected to {hostname}:{port} in an SSL session context!")
             verified_chain_bytes = ssock.get_verified_chain()
@@ -108,6 +118,79 @@ def get_local_chain(paths: list[pathlib.Path]) -> pki_tools.Chain:
     return pki_tools.Chain(certificates=certs)
 
 
+def is_certificate_authority(cert: pki_tools.Certificate) -> bool:
+    """Return True when the certificate is marked as a CA in Basic Constraints."""
+    if cert.extensions is None or cert.extensions.basic_constraints is None:
+        return False
+    return cert.extensions.basic_constraints.ca
+
+
+def find_end_entity_certificates(chain: pki_tools.Chain) -> list[pki_tools.Certificate]:
+    """Return end-entity (leaf) certificates in a chain.
+
+    End entities are certificates that are not CAs and do not issue any other
+    certificate present in the bundle.
+    """
+    certs = chain.certificates
+    end_entities = [
+        cert
+        for cert in certs
+        if not is_certificate_authority(cert)
+        and not any(
+            other.issuer == cert.subject for other in certs if other is not cert
+        )
+    ]
+    if not end_entities:
+        raise pki_tools.NotCompleteChain(
+            "This certificate chain is not complete! Ensure your files contain the leaf and all intermediate keys."
+        )
+    return end_entities
+
+
+def trust_anchor_for(
+    end_entity: pki_tools.Certificate, chain: pki_tools.Chain
+) -> pki_tools.Certificate:
+    """Return the self-signed root at the end of the trust path for an end entity."""
+    current = end_entity
+    seen: set[tuple[int, str]] = set()
+    while True:
+        issuer = chain.get_issuer(current)
+        key = (issuer.serial_number, str(issuer.subject))
+        if key in seen:
+            raise pki_tools.NotCompleteChain(
+                "This certificate chain is not complete! Ensure your files contain the root and all intermediate keys."
+            )
+        seen.add(key)
+        if issuer.issuer == issuer.subject:
+            return issuer
+        current = issuer
+
+
+def assert_certificate_valid(cert: pki_tools.Certificate) -> None:
+    """Raise CertExpired when the certificate is outside its validity period."""
+    now = datetime.now(UTC)
+    if cert.validity.not_after < now:
+        raise pki_tools.CertExpired(
+            f"Certificate in chain with subject: '{cert.subject}' has expired"
+        )
+    if cert.validity.not_before > now:
+        raise pki_tools.CertExpired(
+            f"Certificate in chain with subject: '{cert.subject}' is not yet valid"
+        )
+
+
+def validate_certificate_chain(
+    chain: pki_tools.Chain, *, check_trust_anchor_expiry: bool = False
+) -> None:
+    """Validate PKIX trust paths for end-entity certificates in the chain."""
+    for end_entity in find_end_entity_certificates(chain):
+        assert_certificate_valid(end_entity)
+        chain.validate_trust_path(end_entity)
+        anchor = trust_anchor_for(end_entity, chain)
+        if check_trust_anchor_expiry:
+            assert_certificate_valid(anchor)
+
+
 def validate_chain_crl(chain: pki_tools.Chain):
     for cert in chain.certificates:
         console.print(f"Checking CRL for {cert.subject}")
@@ -115,19 +198,30 @@ def validate_chain_crl(chain: pki_tools.Chain):
             raise CertificateRevoked(f"Certificate {cert.subject} is revoked!")
 
 
-def check_local_chains(paths: list[pathlib.Path], verbose: bool = False) -> None:
+def check_local_chains(
+    paths: list[pathlib.Path],
+    verbose: bool = False,
+    *,
+    check_trust_anchor_expiry: bool = True,
+    check_crl: bool = True,
+) -> None:
     """Take a list of local file paths, combine them into a single chain, and validate the chain.
 
     Args:
         paths (list[pathlib.Path]): List of files containing certificates.
         verbose (bool, optional): Write the combined chain's details to stdout. Defaults to False.
+        check_trust_anchor_expiry: When True, validate notBefore/notAfter on self-signed roots.
+        check_crl: When True, check certificate revocation via CRL distribution points.
     """
     console.print("Composing a certificate chain from the following files:")
     for p in paths:
         console.print(f"  - {p}")
     chain = get_local_chain(paths)
-    chain.check_chain()
-    validate_chain_crl(chain=chain)
+    validate_certificate_chain(
+        chain, check_trust_anchor_expiry=check_trust_anchor_expiry
+    )
+    if check_crl:
+        validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
     console.print(
@@ -135,25 +229,51 @@ def check_local_chains(paths: list[pathlib.Path], verbose: bool = False) -> None
     )
 
 
-def check_remote_chain(url: HttpUrl, verbose: bool = False):
+def check_remote_chain(
+    url: HttpUrl,
+    verbose: bool = False,
+    *,
+    check_trust_anchor_expiry: bool = False,
+    check_crl: bool = True,
+    check_ssl_crl: bool = False,
+):
     """Take a remote URL, retrieve the certificate chain, and validate it.
 
     Args:
         url (RemoteUrl): URL to retrieve
         verbose (bool, optional): Write the chain's details to stdout. Defaults to False.
+        check_trust_anchor_expiry: When True, validate notBefore/notAfter on self-signed roots.
+        check_crl: When True, check certificate revocation via CRL distribution points.
+        check_ssl_crl: When True, require CRLs during the TLS handshake (remote only).
     """
-    chain = get_remote_chain(url.host, url.port if url.port is not None else 443)
-    chain.check_chain()
-    validate_chain_crl(chain=chain)
+    chain = get_remote_chain(
+        url.host,
+        url.port if url.port is not None else 443,
+        check_ssl_crl=check_ssl_crl,
+    )
+    validate_certificate_chain(
+        chain, check_trust_anchor_expiry=check_trust_anchor_expiry
+    )
+    if check_crl:
+        validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
     console.print(f"[bold green]Remote chain for URL {url} is valid![/bold green]")
 
 
-def check_acm_chain(arn: Arn, verbose: bool = False):
+def check_acm_chain(
+    arn: Arn,
+    verbose: bool = False,
+    *,
+    check_trust_anchor_expiry: bool = True,
+    check_crl: bool = True,
+):
     chain = get_acm_chain(arn=arn)
-    chain.check_chain()
-    validate_chain_crl(chain=chain)
+    validate_certificate_chain(
+        chain, check_trust_anchor_expiry=check_trust_anchor_expiry
+    )
+    if check_crl:
+        validate_chain_crl(chain=chain)
     if verbose:
         console.print(chain)
     console.print(
@@ -162,21 +282,48 @@ def check_acm_chain(arn: Arn, verbose: bool = False):
 
 
 def analyze_certificate_chain(
-    values: list[pathlib.Path] | HttpUrl | Arn, verbose: bool = False
+    values: list[pathlib.Path] | HttpUrl | Arn,
+    verbose: bool = False,
+    *,
+    check_trust_anchor_expiry: bool | None = None,
+    check_crl: bool = True,
+    check_ssl_crl: bool = False,
 ):
     """Entrypoint for the CLI. Analyze a certificate chain, either local, remote via HTTPS, or from ACM.
 
     Args:
         values (list[pathlib.Path] | HttpUrl | Arn): List of files to build into a single chain, or a URL to retrieve.
         verbose (bool, optional): Write the chain's details to stdout. Defaults to False.
+        check_trust_anchor_expiry: Validate trust-anchor validity for local/ACM chains (default True)
+            and remote chains (default False) when left unset.
+        check_crl: When True, check certificate revocation via CRL distribution points.
+        check_ssl_crl: When True, require CRLs during the TLS handshake for remote validation.
     """
+    if check_trust_anchor_expiry is None:
+        check_trust_anchor_expiry = not isinstance(values, HttpUrl)
     try:
         if isinstance(values, HttpUrl):
-            check_remote_chain(url=values, verbose=verbose)
+            check_remote_chain(
+                url=values,
+                verbose=verbose,
+                check_trust_anchor_expiry=check_trust_anchor_expiry,
+                check_crl=check_crl,
+                check_ssl_crl=check_ssl_crl,
+            )
         elif isinstance(values, Arn):
-            check_acm_chain(arn=values, verbose=verbose)
+            check_acm_chain(
+                arn=values,
+                verbose=verbose,
+                check_trust_anchor_expiry=check_trust_anchor_expiry,
+                check_crl=check_crl,
+            )
         else:
-            check_local_chains(paths=values, verbose=verbose)
+            check_local_chains(
+                paths=values,
+                verbose=verbose,
+                check_trust_anchor_expiry=check_trust_anchor_expiry,
+                check_crl=check_crl,
+            )
     except pki_tools.NotCompleteChain:
         err_console.print(
             f"{FAILURE_MESSAGE_COMMON}This certificate chain is not complete! Ensure your file has the root and all intermediate keys."
@@ -217,12 +364,12 @@ def analyze_certificate_chain(
             f"{FAILURE_MESSAGE_COMMON}Failed to resolve the hostname: {values}"
         )
         raise typer.Exit(code=10)
-    except socket.timeout:
+    except TimeoutError:
         err_console.print(
             f"{FAILURE_MESSAGE_COMMON}Timeout while connecting to hostname: {values}"
         )
         raise typer.Exit(code=11)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         if type(e) is ssl.SSLCertVerificationError:
             if "certificate has expired" in str(e):
                 err_console.print(

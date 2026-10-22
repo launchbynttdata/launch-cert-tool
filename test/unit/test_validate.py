@@ -1,6 +1,7 @@
 import pathlib
 import socket
 import ssl
+from datetime import UTC, datetime, timedelta
 
 import pki_tools
 import pytest
@@ -9,8 +10,87 @@ from typer.testing import CliRunner
 
 from launch_cert_tool import validate
 from launch_cert_tool.cli import app
+from test.unit.synthetic_certs import build_ca_cycle_chain, build_chain
 
 runner = CliRunner()
+
+
+def test_find_end_entity_certificates_ignores_unrelated_expired_ca():
+    chain = build_chain(include_unrelated_ca=True)
+    end_entities = validate.find_end_entity_certificates(chain)
+    assert len(end_entities) == 1
+    assert "Test Leaf" in str(end_entities[0].subject)
+
+
+def test_validate_certificate_chain_rejects_expired_trust_anchor():
+    expired_root = datetime.now(UTC) - timedelta(days=1)
+    chain = build_chain(root_not_after=expired_root)
+    with pytest.raises(pki_tools.CertExpired):
+        validate.validate_certificate_chain(chain, check_trust_anchor_expiry=True)
+
+
+def test_check_local_chains_skips_trust_anchor_expiry_when_disabled(mocker):
+    chain = build_chain(root_not_after=datetime.now(UTC) - timedelta(days=1))
+    mocker.patch.object(validate, "get_local_chain", return_value=chain)
+    mocker.patch.object(validate, "validate_chain_crl")
+    validate.check_local_chains(
+        paths=[pathlib.Path("a.pem"), pathlib.Path("b.pem")],
+        check_trust_anchor_expiry=False,
+    )
+
+
+def test_check_local_chains_skips_crl_when_disabled(mocker):
+    chain = build_chain()
+    mocker.patch.object(validate, "get_local_chain", return_value=chain)
+    crl_mock = mocker.patch.object(validate, "validate_chain_crl")
+    validate.check_local_chains(
+        paths=[pathlib.Path("a.pem"), pathlib.Path("b.pem")],
+        check_crl=False,
+    )
+    crl_mock.assert_not_called()
+
+
+def test_validate_certificate_chain_allows_unrelated_expired_ca():
+    chain = build_chain(include_unrelated_ca=True)
+    validate.validate_certificate_chain(chain, check_trust_anchor_expiry=True)
+
+
+def test_assert_certificate_valid_rejects_not_yet_valid(mocker):
+    cert = mocker.MagicMock()
+    cert.subject = "test"
+    cert.validity.not_after = datetime.now(UTC) + timedelta(days=1)
+    cert.validity.not_before = datetime.now(UTC) + timedelta(days=1)
+    with pytest.raises(pki_tools.CertExpired, match="not yet valid"):
+        validate.assert_certificate_valid(cert)
+
+
+def test_validate_certificate_chain_checks_end_entity_and_trust_path(mocker):
+    chain = mocker.MagicMock()
+    end_entity = mocker.MagicMock()
+    mocker.patch.object(
+        validate, "find_end_entity_certificates", return_value=[end_entity]
+    )
+    mocker.patch.object(validate, "assert_certificate_valid")
+    trust_anchor_mock = mocker.patch.object(validate, "trust_anchor_for")
+
+    validate.validate_certificate_chain(chain)
+
+    validate.assert_certificate_valid.assert_called_once_with(end_entity)
+    chain.validate_trust_path.assert_called_once_with(end_entity)
+    trust_anchor_mock.assert_called_once_with(end_entity, chain)
+
+
+def test_validate_certificate_chain_rejects_ca_cycle_without_trust_anchor():
+    chain = build_ca_cycle_chain()
+    with pytest.raises(pki_tools.NotCompleteChain):
+        validate.validate_certificate_chain(chain, check_trust_anchor_expiry=False)
+
+
+def test_trust_anchor_for_rejects_ca_cycle():
+    chain = build_ca_cycle_chain()
+    end_entity = validate.find_end_entity_certificates(chain)[0]
+    with pytest.raises(pki_tools.NotCompleteChain):
+        validate.trust_anchor_for(end_entity, chain)
 
 
 def test_unhandled_exception_exits_1(mocker):
@@ -102,7 +182,7 @@ def test_handled_exceptions(
     )
     result = runner.invoke(app, args=["validate", "local", "LICENSE"])
     assert result.exit_code == expected_code
-    assert expected_text in result.stdout
+    assert expected_text in result.output
 
 
 def test_acm_respects_region_from_arn(mocker):

@@ -22,9 +22,9 @@ requires-python = ">=3.13" # If you adjust this, you will need to adjust the pyt
 dependencies = [
     "arn>=0.1.5",
     "boto3>=1.36.7",
-    "certifi>=2024.12.14",
+    "certifi>=2026.10.19",
     "cryptography>=43.0.3",
-    "pki-tools>=1.0.6",
+    "pki-tools>=2.2.0",
     "requests>=2.32.3",
     "typer>=0.15.1",
 ]

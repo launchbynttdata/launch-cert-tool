@@ -21,16 +21,18 @@ def unsafe_cert_download():
         # against known bad certificates, but should _never_ be set in application code.
         context.verify_mode = ssl.CERT_NONE
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                ssock.connect((hostname, port))
-                verified_chain_bytes = ssock.get_verified_chain()
-                if not verified_chain_bytes:
-                    raise RuntimeError(f"Failed to get verified chain for {hostname}")
-                x509_chain_verified = [
-                    cryptography.x509.load_der_x509_certificate(b)
-                    for b in verified_chain_bytes
-                ]
+        with (
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock,
+            context.wrap_socket(sock, server_hostname=hostname) as ssock,
+        ):
+            ssock.connect((hostname, port))
+            verified_chain_bytes = ssock.get_verified_chain()
+            if not verified_chain_bytes:
+                raise RuntimeError(f"Failed to get verified chain for {hostname}")
+            x509_chain_verified = [
+                cryptography.x509.load_der_x509_certificate(b)
+                for b in verified_chain_bytes
+            ]
         certs = pki_tools.Chain.from_cryptography(x509_chain_verified).certificates
         cert_files = []
         for idx, cert in enumerate(certs):
